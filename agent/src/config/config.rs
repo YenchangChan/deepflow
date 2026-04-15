@@ -3108,6 +3108,17 @@ impl Default for OutputCompression {
 
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+pub struct Labels {
+    pub flow_log: Vec<HashMap<String, String>>,
+    pub protocol_log: Vec<HashMap<String, String>>,
+    pub flow_metrics: Vec<HashMap<String, String>>,
+    pub application_log: Vec<HashMap<String, String>>,
+    pub proc_events: Vec<HashMap<String, String>>,
+    pub profile: Vec<HashMap<String, String>>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub struct Outputs {
     pub socket: Socket,
     pub flow_log: OutputsFlowLog,
@@ -3115,6 +3126,7 @@ pub struct Outputs {
     pub lumberjack: Lumberjack,
     pub npb: Npb,
     pub compression: OutputCompression,
+    pub labels: Labels,
 }
 
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
@@ -4159,5 +4171,52 @@ processors:
         assert_eq!(apps[0].timeout, Duration::from_secs(150));
         assert_eq!(apps[1].protocol, L7Protocol::Grpc);
         assert_eq!(apps[1].timeout, Duration::from_secs(130));
+    }
+
+    #[test]
+    fn parse_labels_config() {
+        let yaml = r#"
+outputs:
+  labels:
+    flow_log:
+      - env: production
+      - cluster: k8s-prod
+    protocol_log:
+      - region: cn-east
+    flow_metrics: []
+    application_log: []
+    proc_events: []
+    profile: []
+"#;
+        let config: UserConfig = serde_yaml::from_str(yaml).expect("Failed to parse labels config");
+        assert_eq!(config.outputs.labels.flow_log.len(), 2);
+        assert_eq!(
+            config.outputs.labels.flow_log[0].get("env"),
+            Some(&"production".to_string())
+        );
+        assert_eq!(
+            config.outputs.labels.flow_log[1].get("cluster"),
+            Some(&"k8s-prod".to_string())
+        );
+        assert_eq!(config.outputs.labels.protocol_log.len(), 1);
+        assert_eq!(
+            config.outputs.labels.protocol_log[0].get("region"),
+            Some(&"cn-east".to_string())
+        );
+        assert_eq!(config.outputs.labels.flow_metrics.len(), 0);
+    }
+
+    #[test]
+    fn parse_labels_config_empty() {
+        let yaml = r#"
+outputs: {}
+"#;
+        let config: UserConfig = serde_yaml::from_str(yaml).expect("Failed to parse empty config");
+        assert_eq!(config.outputs.labels.flow_log.len(), 0);
+        assert_eq!(config.outputs.labels.protocol_log.len(), 0);
+        assert_eq!(config.outputs.labels.flow_metrics.len(), 0);
+        assert_eq!(config.outputs.labels.application_log.len(), 0);
+        assert_eq!(config.outputs.labels.proc_events.len(), 0);
+        assert_eq!(config.outputs.labels.profile.len(), 0);
     }
 }

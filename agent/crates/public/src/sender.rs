@@ -38,7 +38,7 @@ pub trait Sendable: Debug + Send + 'static {
     }
 }
 
-#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq)]
+#[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum SendMessageType {
     Compress = 0,

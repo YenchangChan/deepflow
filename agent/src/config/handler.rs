@@ -95,6 +95,7 @@ use crate::{trident::AgentId, utils::cgroups::is_kernel_available_for_cgroups};
 use public::bitmap::Bitmap;
 use public::l7_protocol::L7Protocol;
 use public::proto::agent::{self, AgentType, PacketCaptureType};
+use public::sender::SendMessageType;
 use public::utils::{bitmap::parse_range_list_to_bitmap, net::MacAddr};
 
 cfg_if::cfg_if! {
@@ -277,6 +278,8 @@ pub struct SenderConfig {
     pub lumberjack_local_port_range: Option<(u16, u16)>,
     pub lumberjack_tls_enabled: bool,
     pub lumberjack_tls_ca_path: Option<String>,
+    // Custom labels per data type (for Lumberjack JSON output)
+    pub labels: HashMap<SendMessageType, Vec<(String, String)>>,
 }
 
 impl SenderConfig {
@@ -2236,6 +2239,31 @@ impl TryFrom<(Config, UserConfig)> for ModuleConfig {
                     None
                 } else {
                     Some(conf.outputs.lumberjack.tls.ca_file.clone())
+                },
+                labels: {
+                    let flatten = |entries: &[HashMap<String, String>]| -> Vec<(String, String)> {
+                        entries
+                            .iter()
+                            .flat_map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())))
+                            .collect()
+                    };
+                    let labels = &conf.outputs.labels;
+                    let pairs = [
+                        (SendMessageType::TaggedFlow, &labels.flow_log),
+                        (SendMessageType::ProtocolLog, &labels.protocol_log),
+                        (SendMessageType::Metrics, &labels.flow_metrics),
+                        (SendMessageType::ApplicationLog, &labels.application_log),
+                        (SendMessageType::ProcEvents, &labels.proc_events),
+                        (SendMessageType::Profile, &labels.profile),
+                    ];
+                    let mut map = HashMap::new();
+                    for (msg_type, entries) in pairs {
+                        let v = flatten(entries);
+                        if !v.is_empty() {
+                            map.insert(msg_type, v);
+                        }
+                    }
+                    map
                 },
             },
             npb: NpbConfig {

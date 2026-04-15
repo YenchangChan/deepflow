@@ -8093,6 +8093,92 @@ outputs:
       # upgrade_from: static_config.collector-sender-queue-size
       sender_queue_size: 65536
   # type: section
+  # name:
+  #   en: Labels
+  #   ch: 自定义标签
+  # description:
+  #   en: |-
+  #     Custom key-value labels injected into each outgoing message
+  #     (Lumberjack JSON output only). Configure per data category.
+  #   ch: |-
+  #     注入到每条输出消息中的自定义键值标签
+  #     （仅 Lumberjack JSON 输出路径）。按数据类型分别配置。
+  labels:
+    # type: list
+    # name:
+    #   en: Flow Log Labels
+    #   ch: 流日志标签
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Custom labels attached to L4 flow log (TaggedFlow) messages.
+    #     Each entry is a single key-value map, e.g. "- env: production".
+    #   ch: |-
+    #     附加到 L4 流日志（TaggedFlow）消息的自定义标签。
+    #     每项为单个键值对，例如 "- env: production"。
+    flow_log: []
+    # type: list
+    # name:
+    #   en: Protocol Log Labels
+    #   ch: 协议日志标签
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Custom labels attached to L7 protocol log (AppProtoLogsData) messages.
+    #   ch: |-
+    #     附加到 L7 协议日志（AppProtoLogsData）消息的自定义标签。
+    protocol_log: []
+    # type: list
+    # name:
+    #   en: Flow Metrics Labels
+    #   ch: 流指标标签
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Custom labels attached to flow metrics (Document) messages.
+    #   ch: |-
+    #     附加到流指标（Document）消息的自定义标签。
+    flow_metrics: []
+    # type: list
+    # name:
+    #   en: Application Log Labels
+    #   ch: 应用日志标签
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Custom labels attached to application log messages.
+    #   ch: |-
+    #     附加到应用日志消息的自定义标签。
+    application_log: []
+    # type: list
+    # name:
+    #   en: Process Events Labels
+    #   ch: 进程事件标签
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Custom labels attached to process event messages.
+    #   ch: |-
+    #     附加到进程事件消息的自定义标签。
+    proc_events: []
+    # type: list
+    # name:
+    #   en: Profile Labels
+    #   ch: Profile 标签
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Custom labels attached to profile/profiling messages.
+    #   ch: |-
+    #     附加到 Profile/Profiling 消息的自定义标签。
+    profile: []
+  # type: section
   # name: NPB (Network Packet Broker)
   # description:
   npb:

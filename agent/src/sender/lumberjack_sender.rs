@@ -200,11 +200,7 @@ impl LumberjackConnectionPool {
         }
     }
 
-    async fn try_send<T: Serialize>(
-        &mut self,
-        idx: usize,
-        events: &[T],
-    ) -> Result<u32, String> {
+    async fn try_send<T: Serialize>(&mut self, idx: usize, events: &[T]) -> Result<u32, String> {
         let ep = &mut self.endpoints[idx];
 
         // Lazy connect / reconnect
@@ -299,7 +295,10 @@ impl<T: Sendable> LumberjackSenderThread<T> {
 
     pub fn start(&mut self) {
         if self.running.swap(true, Ordering::Relaxed) {
-            warn!("{} lumberjack sender id: {} already started", self.name, self.id);
+            warn!(
+                "{} lumberjack sender id: {} already started",
+                self.name, self.id
+            );
             return;
         }
         let running = self.running.clone();
@@ -318,7 +317,12 @@ impl<T: Sendable> LumberjackSenderThread<T> {
                         .build()
                         .unwrap();
                     let mut sender = LumberjackSender::new(
-                        input, config, leaky_bucket, counter, pool_stats, running,
+                        input,
+                        config,
+                        leaky_bucket,
+                        counter,
+                        pool_stats,
+                        running,
                     );
                     rt.block_on(sender.run());
                 })
@@ -428,7 +432,9 @@ impl<T: Sendable> LumberjackSender<T> {
                 }
             }
 
-            self.counter.rx.fetch_add(batch.len() as u64, Ordering::Relaxed);
+            self.counter
+                .rx
+                .fetch_add(batch.len() as u64, Ordering::Relaxed);
 
             // JSON serialize and inject metadata
             let mut events: Vec<serde_json::Value> = Vec::with_capacity(batch.len());
@@ -442,6 +448,13 @@ impl<T: Sendable> LumberjackSender<T> {
                         obj.insert("_agent_id".into(), serde_json::json!(agent_id));
                         obj.insert("_team_id".into(), serde_json::json!(team_id));
                         obj.insert("_org_id".into(), serde_json::json!(org_id));
+                        if let Some(tags) = cfg.labels.get(&msg.message_type()) {
+                            let tag_obj: serde_json::Map<String, serde_json::Value> = tags
+                                .iter()
+                                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                                .collect();
+                            obj.insert("labels".into(), serde_json::Value::Object(tag_obj));
+                        }
                     }
                     let size = serde_json::to_vec(&json)
                         .map(|v| v.len() as u64)
@@ -459,7 +472,9 @@ impl<T: Sendable> LumberjackSender<T> {
 
             // Rate limiting
             if !self.leaky_bucket.acquire(raw_bytes) {
-                self.counter.dropped.fetch_add(events.len() as u64, Ordering::Relaxed);
+                self.counter
+                    .dropped
+                    .fetch_add(events.len() as u64, Ordering::Relaxed);
                 continue;
             }
 
@@ -467,7 +482,9 @@ impl<T: Sendable> LumberjackSender<T> {
             let pool = match self.pool.as_mut() {
                 Some(p) => p,
                 None => {
-                    self.counter.dropped.fetch_add(events.len() as u64, Ordering::Relaxed);
+                    self.counter
+                        .dropped
+                        .fetch_add(events.len() as u64, Ordering::Relaxed);
                     continue;
                 }
             };
@@ -475,11 +492,15 @@ impl<T: Sendable> LumberjackSender<T> {
             match pool.send_with_retry(&events, &self.pool_stats).await {
                 Ok(acked) => {
                     self.counter.tx.fetch_add(acked as u64, Ordering::Relaxed);
-                    self.counter.tx_bytes.fetch_add(raw_bytes, Ordering::Relaxed);
+                    self.counter
+                        .tx_bytes
+                        .fetch_add(raw_bytes, Ordering::Relaxed);
                 }
                 Err(e) => {
                     warn!("Lumberjack send failed: {e}");
-                    self.counter.dropped.fetch_add(events.len() as u64, Ordering::Relaxed);
+                    self.counter
+                        .dropped
+                        .fetch_add(events.len() as u64, Ordering::Relaxed);
                 }
             }
         }
