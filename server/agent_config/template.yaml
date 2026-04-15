@@ -7536,6 +7536,123 @@ outputs:
     multiple_sockets_to_ingester: false
   # type: section
   # name:
+  #   en: Lumberjack
+  #   ch: Lumberjack 输出
+  # description:
+  #   en: |-
+  #     When enabled, deepflow-agent sends data via Lumberjack v2 protocol
+  #     instead of the default TCP/Protobuf channel. The two channels are
+  #     mutually exclusive. Rate limiting is controlled by
+  #     global.communication.max_throughput_to_ingester (shared).
+  #   ch: |-
+  #     启用后，deepflow-agent 通过 Lumberjack v2 协议发送数据，替代默认的
+  #     TCP/Protobuf 通道。两个通道互斥，不会同时工作。限流由
+  #     global.communication.max_throughput_to_ingester 统一控制。
+  lumberjack:
+    # type: bool
+    # name:
+    #   en: Enable Lumberjack Output
+    #   ch: 启用 Lumberjack 输出
+    # unit:
+    # range: []
+    # enum_options: []
+    # modification: agent_restart
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Enable Lumberjack output channel (disables default TCP/Protobuf channel).
+    #   ch: |-
+    #     启用 Lumberjack 输出通道（同时禁用默认的 TCP/Protobuf 通道）。
+    enabled: false
+    # type: list
+    # name:
+    #   en: Lumberjack Endpoints
+    #   ch: Lumberjack 端点列表
+    # unit:
+    # range: []
+    # enum_options: []
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     List of Ingester endpoints for Lumberjack. Each entry is "ip:port".
+    #     Port can be omitted and defaults to 7070. Supports multiple endpoints
+    #     for HA with round-robin and automatic failover.
+    #   ch: |-
+    #     Lumberjack Ingester 地址列表，格式为 "ip:port"。端口可省略，默认 7070。
+    #     支持多个 endpoint 实现 HA（round-robin + 自动故障切换）。
+    endpoints: []
+    # type: int
+    # name:
+    #   en: Compression Level
+    #   ch: 压缩级别
+    # unit:
+    # range: [0, 9]
+    # enum_options: []
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: "zlib compression level. 0 = disabled, 3 = default."
+    #   ch: "zlib 压缩级别。0 = 关闭，3 = 默认。"
+    compression_level: 3
+    # type: int
+    # name:
+    #   en: Batch Size
+    #   ch: 批次大小
+    # unit:
+    # range: [0, 1000]
+    # enum_options: []
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: "Maximum number of events per Lumberjack batch. 0 = no batching."
+    #   ch: "每个 Lumberjack 批次的最大事件数。0 = 逐条发送。"
+    batch_size: 100
+    # type: duration
+    # name:
+    #   en: ACK Timeout
+    #   ch: ACK 超时
+    # unit:
+    # range: [1s, 120s]
+    # enum_options: []
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: "Maximum time to wait for server ACK before treating as failure."
+    #   ch: "等待 Server ACK 的最大超时时间，超时视为发送失败。"
+    ack_timeout: 30s
+    # type: string
+    # name:
+    #   en: Local Port Range
+    #   ch: 本地端口范围
+    # unit:
+    # range: []
+    # enum_options: []
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Restrict the local (source) TCP port range. Format: "start,end".
+    #     Empty string means the OS picks an ephemeral port.
+    #   ch: |-
+    #     限制本地 TCP 端口范围，格式 "起始,结束"。为空表示 OS 自动选择。
+    local_port_range: ""
+    # type: section
+    # name:
+    #   en: TLS
+    #   ch: TLS
+    # description:
+    tls:
+      # type: bool
+      # modification: agent_restart
+      # ee_feature: false
+      enabled: false
+      # type: string
+      # modification: agent_restart
+      # ee_feature: false
+      ca_file: ""
+  # type: section
+  # name:
   #   en: Flow Log and Request Log
   #   ch: 流日志及调用日志
   # description:

@@ -2877,6 +2877,40 @@ impl Default for Socket {
     }
 }
 
+#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct LumberjackTls {
+    pub enabled: bool,
+    pub ca_file: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct Lumberjack {
+    pub enabled: bool,
+    pub endpoints: Vec<String>,
+    pub compression_level: u32,
+    pub batch_size: usize,
+    #[serde(with = "humantime_serde")]
+    pub ack_timeout: Duration,
+    pub local_port_range: String,
+    pub tls: LumberjackTls,
+}
+
+impl Default for Lumberjack {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoints: vec![],
+            compression_level: 3,
+            batch_size: 100,
+            ack_timeout: Duration::from_secs(30),
+            local_port_range: String::new(),
+            tls: LumberjackTls::default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct FlowLogFilters {
@@ -3078,6 +3112,7 @@ pub struct Outputs {
     pub socket: Socket,
     pub flow_log: OutputsFlowLog,
     pub flow_metrics: FlowMetrics,
+    pub lumberjack: Lumberjack,
     pub npb: Npb,
     pub compression: OutputCompression,
 }

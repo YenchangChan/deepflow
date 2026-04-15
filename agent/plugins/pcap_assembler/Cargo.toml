@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 prost.workspace = true
 public = { path = "../../crates/public" }
+serde_json = "1"

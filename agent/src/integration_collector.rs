@@ -89,6 +89,44 @@ type GenericError = Box<dyn std::error::Error + Send + Sync>;
 const NOT_FOUND: &[u8] = b"Not Found";
 const GZIP: &str = "gzip";
 
+// Helper: convert raw bytes to JSON for Lumberjack output.
+// Tries JSON parse first, falls back to UTF-8 string, then base64.
+fn raw_bytes_to_json(data: &[u8], msg_type: &str) -> Option<serde_json::Value> {
+    use base64::{prelude::BASE64_STANDARD, Engine};
+    if let Ok(val) = serde_json::from_slice::<serde_json::Value>(data) {
+        let mut obj = if val.is_object() {
+            val
+        } else {
+            serde_json::json!({"data": val})
+        };
+        if let Some(map) = obj.as_object_mut() {
+            map.insert("_msg_type".into(), serde_json::json!(msg_type));
+        }
+        return Some(obj);
+    }
+    let data_val = match std::str::from_utf8(data) {
+        Ok(s) => serde_json::json!(s),
+        Err(_) => serde_json::json!(BASE64_STANDARD.encode(data)),
+    };
+    Some(serde_json::json!({
+        "_msg_type": msg_type,
+        "data": data_val,
+        "_encoding": if std::str::from_utf8(data).is_ok() { "utf8" } else { "base64" },
+    }))
+}
+
+// Helper: convert a prost Message to JSON for Lumberjack output.
+fn proto_to_json(msg: &impl prost::Message, msg_type: &str) -> Option<serde_json::Value> {
+    use base64::{prelude::BASE64_STANDARD, Engine};
+    let mut buf = Vec::with_capacity(msg.encoded_len());
+    msg.encode(&mut buf).ok()?;
+    Some(serde_json::json!({
+        "_msg_type": msg_type,
+        "data": BASE64_STANDARD.encode(&buf),
+        "_encoding": "protobuf_base64",
+    }))
+}
+
 // Otel的protobuf数据
 // ingester使用该proto https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto进行解析
 #[derive(Debug, PartialEq)]
@@ -104,6 +142,10 @@ impl Sendable for OpenTelemetry {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::OpenTelemetry
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        raw_bytes_to_json(&self.0, "opentelemetry")
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -118,6 +160,10 @@ impl Sendable for OpenTelemetryCompressed {
 
     fn message_type(&self) -> SendMessageType {
         SendMessageType::OpenTelemetryCompressed
+    }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        raw_bytes_to_json(&self.0, "opentelemetry_compressed")
     }
 }
 
@@ -155,6 +201,10 @@ impl Sendable for BoxedPrometheusExtra {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::Prometheus
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        raw_bytes_to_json(&self.0.metrics, "prometheus")
+    }
 }
 
 /// Telegraf metric， 是influxDB标准行协议的UTF8编码的文本数据
@@ -171,6 +221,10 @@ impl Sendable for TelegrafMetric {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::Telegraf
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        raw_bytes_to_json(&self.0, "telegraf")
+    }
 }
 
 /// java profile xxxx
@@ -184,6 +238,10 @@ impl Sendable for Profile {
 
     fn message_type(&self) -> SendMessageType {
         SendMessageType::Profile
+    }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        proto_to_json(&self.0, "profile")
     }
 }
 
@@ -239,6 +297,10 @@ impl Sendable for Datadog {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::Datadog
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        proto_to_json(&self.0, "datadog")
+    }
 }
 
 // for log capture from vector
@@ -254,6 +316,27 @@ impl Sendable for ApplicationLog {
 
     fn message_type(&self) -> SendMessageType {
         SendMessageType::ApplicationLog
+    }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        // Try parsing raw bytes as JSON (application logs are often JSON)
+        if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&self.0) {
+            let mut obj = if val.is_object() {
+                val
+            } else {
+                serde_json::json!({"data": val})
+            };
+            if let Some(map) = obj.as_object_mut() {
+                map.insert("_msg_type".into(), serde_json::json!("application_log"));
+            }
+            return Some(obj);
+        }
+        // Fall back: treat as UTF-8 string
+        let s = std::str::from_utf8(&self.0).ok()?;
+        Some(serde_json::json!({
+            "_msg_type": "application_log",
+            "data": s,
+        }))
     }
 }
 

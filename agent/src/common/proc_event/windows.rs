@@ -32,4 +32,8 @@ impl Sendable for BoxedProcEvents {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::ProcEvents
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        None
+    }
 }

@@ -34,6 +34,10 @@ impl Sendable for SkyWalkingExtra {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::SkyWalking
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        None // Enterprise Edition stub
+    }
 }
 
 pub async fn handle_skywalking_request(

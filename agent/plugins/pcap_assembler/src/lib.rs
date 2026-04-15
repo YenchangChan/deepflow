@@ -50,6 +50,10 @@ impl Sendable for BoxedPcapBatch {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::RawPcap
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        None // Enterprise Edition stub
+    }
 }
 
 impl PcapAssembler {

@@ -105,6 +105,14 @@ impl Sendable for BoxedDocument {
     fn file_name(&self) -> &str {
         "flow_metrics"
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        let mut val = serde_json::to_value(&*self.0).ok()?;
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("_msg_type".into(), serde_json::json!("metrics"));
+        }
+        Some(val)
+    }
 }
 
 bitflags! {

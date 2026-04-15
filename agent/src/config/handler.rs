@@ -268,6 +268,32 @@ pub struct SenderConfig {
     pub server_tx_bandwidth_threshold: u64,
     pub bandwidth_probe_interval: Duration,
     pub enabled: bool,
+    // Lumberjack output (flattened from outputs.lumberjack)
+    pub lumberjack_enabled: bool,
+    pub lumberjack_endpoints: Vec<(String, u16)>,
+    pub lumberjack_compression_level: u32,
+    pub lumberjack_batch_size: usize,
+    pub lumberjack_ack_timeout: Duration,
+    pub lumberjack_local_port_range: Option<(u16, u16)>,
+    pub lumberjack_tls_enabled: bool,
+    pub lumberjack_tls_ca_path: Option<String>,
+}
+
+impl SenderConfig {
+    pub fn is_lumberjack_enabled(&self) -> bool {
+        self.lumberjack_enabled
+    }
+
+    pub fn validate_lumberjack(&self) -> std::result::Result<(), String> {
+        if self.lumberjack_enabled && self.lumberjack_endpoints.is_empty() {
+            return Err(
+                "outputs.lumberjack.enabled is true but endpoints is empty. \
+                 Configure at least one endpoint."
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
 impl Default for SenderConfig {
@@ -458,6 +484,41 @@ impl PluginConfig {
             self.wasm_plugins.len(),
             self.so_plugins.len()
         );
+    }
+}
+
+fn parse_lumberjack_endpoint(s: &str) -> (String, u16) {
+    const DEFAULT_PORT: u16 = 7070;
+    // Handle IPv6: [::1]:7070
+    if let Some(bracket_end) = s.rfind(']') {
+        let host = &s[..=bracket_end];
+        let port = s[bracket_end + 1..]
+            .strip_prefix(':')
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(DEFAULT_PORT);
+        return (host.to_string(), port);
+    }
+    match s.rsplit_once(':') {
+        Some((host, port_str)) => match port_str.parse::<u16>() {
+            Ok(port) => (host.to_string(), port),
+            Err(_) => (s.to_string(), DEFAULT_PORT),
+        },
+        None => (s.to_string(), DEFAULT_PORT),
+    }
+}
+
+fn parse_port_range(s: &str) -> Option<(u16, u16)> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (start_str, end_str) = s.split_once(',')?;
+    let start: u16 = start_str.trim().parse().ok()?;
+    let end: u16 = end_str.trim().parse().ok()?;
+    if start > 0 && end >= start {
+        Some((start, end))
+    } else {
+        None
     }
 }
 
@@ -2156,6 +2217,26 @@ impl TryFrom<(Config, UserConfig)> for ModuleConfig {
                 standalone_data_file_size: conf.global.standalone_mode.max_data_file_size,
                 standalone_data_file_dir: conf.global.standalone_mode.data_file_dir.clone(),
                 enabled: conf.outputs.flow_metrics.enabled,
+                lumberjack_enabled: conf.outputs.lumberjack.enabled,
+                lumberjack_endpoints: conf
+                    .outputs
+                    .lumberjack
+                    .endpoints
+                    .iter()
+                    .map(|s| parse_lumberjack_endpoint(s))
+                    .collect(),
+                lumberjack_compression_level: conf.outputs.lumberjack.compression_level,
+                lumberjack_batch_size: conf.outputs.lumberjack.batch_size,
+                lumberjack_ack_timeout: conf.outputs.lumberjack.ack_timeout,
+                lumberjack_local_port_range: parse_port_range(
+                    &conf.outputs.lumberjack.local_port_range,
+                ),
+                lumberjack_tls_enabled: conf.outputs.lumberjack.tls.enabled,
+                lumberjack_tls_ca_path: if conf.outputs.lumberjack.tls.ca_file.is_empty() {
+                    None
+                } else {
+                    Some(conf.outputs.lumberjack.tls.ca_file.clone())
+                },
             },
             npb: NpbConfig {
                 mtu: conf.outputs.npb.max_mtu,

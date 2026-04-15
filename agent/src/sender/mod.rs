@@ -15,8 +15,15 @@
  */
 
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::thread::JoinHandle;
+
+use public::sender::Sendable;
+
+use self::lumberjack_sender::LumberjackSenderThread;
+use self::uniform_sender::UniformSenderThread;
 
 // NpbBandwidthWatcher NewFragmenterBuilder NewCompressorBuilder NewPCapBuilder NewUniformCollectSender
+pub(crate) mod lumberjack_sender;
 pub mod npb_sender;
 mod tcp_packet;
 pub(crate) mod uniform_sender;
@@ -29,3 +36,33 @@ pub fn get_sender_id() -> u8 {
 }
 
 pub(crate) const QUEUE_BATCH_SIZE: usize = 1024;
+
+/// Sender that can be either UniformSender (TCP/Protobuf) or LumberjackSender,
+/// depending on outputs.lumberjack.enabled configuration.
+pub enum SendHandler<T: Sendable> {
+    Uniform(UniformSenderThread<T>),
+    Lumberjack(LumberjackSenderThread<T>),
+}
+
+impl<T: Sendable> SendHandler<T> {
+    pub fn start(&mut self) {
+        match self {
+            Self::Uniform(s) => s.start(),
+            Self::Lumberjack(s) => s.start(),
+        }
+    }
+
+    pub fn notify_stop(&mut self) -> Option<JoinHandle<()>> {
+        match self {
+            Self::Uniform(s) => s.notify_stop(),
+            Self::Lumberjack(s) => s.notify_stop(),
+        }
+    }
+
+    pub fn stop(&mut self) {
+        match self {
+            Self::Uniform(s) => s.stop(),
+            Self::Lumberjack(s) => s.stop(),
+        }
+    }
+}

@@ -96,6 +96,14 @@ impl Sendable for BoxedTaggedFlow {
         dst.push('\n');
     }
 
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        let mut val = serde_json::to_value(&*self.0).ok()?;
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("_msg_type".to_string(), serde_json::json!("tagged_flow"));
+        }
+        Some(val)
+    }
+
     fn file_name(&self) -> &str {
         "l4_flow_log"
     }

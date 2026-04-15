@@ -497,6 +497,14 @@ impl Sendable for BoxAppProtoLogsData {
         SendMessageType::ProtocolLog
     }
 
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        let mut val = serde_json::to_value(&*self.data).ok()?;
+        if let Some(obj) = val.as_object_mut() {
+            obj.insert("_msg_type".to_string(), serde_json::json!("protocol_log"));
+        }
+        Some(val)
+    }
+
     fn to_kv_string(&self, kv_string: &mut String) {
         let json = serde_json::to_string(&(*self.data)).unwrap();
         kv_string.push_str(&json);

@@ -31,6 +31,11 @@ pub trait Sendable: Debug + Send + 'static {
     }
     // Serialize data to key-value and append to a string
     fn to_kv_string(&self, _: &mut String) {}
+    // Serialize to JSON for Lumberjack output.
+    // Returns None if this type does not support Lumberjack output.
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy, IntoPrimitive, PartialEq)]

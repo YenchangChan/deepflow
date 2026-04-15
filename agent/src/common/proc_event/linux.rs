@@ -243,4 +243,31 @@ impl Sendable for BoxedProcEvents {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::ProcEvents
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        let event_type = match self.0.event_type {
+            EventType::IoEvent => "io_event",
+            EventType::OtherEvent => "other_event",
+        };
+        let mut val = serde_json::json!({
+            "_msg_type": "proc_events",
+            "pid": self.0.pid,
+            "thread_id": self.0.thread_id,
+            "coroutine_id": self.0.coroutine_id,
+            "start_time": self.0.start_time,
+            "end_time": self.0.end_time,
+            "process_kname": self.0.process_kname,
+            "event_type": event_type,
+            "pod_id": self.0.pod_id,
+        });
+        if let EventData::IoEvent(io) = &self.0.event_data {
+            val["io_event"] = serde_json::json!({
+                "bytes_count": io.bytes_count,
+                "operation": io.operation,
+                "latency": io.latency,
+                "file_type": io.file_type,
+            });
+        }
+        Some(val)
+    }
 }

@@ -62,6 +62,10 @@ impl Sendable for BoxedPacketSequenceBlock {
     fn message_type(&self) -> SendMessageType {
         SendMessageType::PacketSequenceBlock
     }
+
+    fn to_json_value(&self) -> Option<serde_json::Value> {
+        None // Enterprise Edition stub
+    }
 }
 
 pub struct MiniMetaPacket<'a> {

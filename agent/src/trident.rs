@@ -84,8 +84,10 @@ use crate::{
     policy::{Policy, PolicyGetter, PolicySetter},
     rpc::{Session, Synchronizer, DEFAULT_TIMEOUT},
     sender::{
+        lumberjack_sender::LumberjackSenderThread,
         npb_sender::NpbArpTable,
         uniform_sender::{Connection, UniformSenderThread},
+        SendHandler,
     },
     utils::{
         cgroups::{is_kernel_available_for_cgroups, Cgroups},
@@ -1786,9 +1788,9 @@ pub struct AgentComponents {
     pub tap_typer: Arc<CaptureNetworkTyper>,
     pub cur_tap_types: Vec<agent::CaptureNetworkType>,
     pub dispatcher_components: Vec<DispatcherComponent>,
-    pub l4_flow_uniform_sender: UniformSenderThread<BoxedTaggedFlow>,
-    pub metrics_uniform_sender: UniformSenderThread<BoxedDocument>,
-    pub l7_flow_uniform_sender: UniformSenderThread<BoxAppProtoLogsData>,
+    pub l4_flow_uniform_sender: SendHandler<BoxedTaggedFlow>,
+    pub metrics_uniform_sender: SendHandler<BoxedDocument>,
+    pub l7_flow_uniform_sender: SendHandler<BoxAppProtoLogsData>,
     pub platform_synchronizer: Arc<PlatformSynchronizer>,
     #[cfg(target_os = "linux")]
     pub kubernetes_poller: Arc<GenericPoller>,
@@ -1800,18 +1802,18 @@ pub struct AgentComponents {
     pub running: AtomicBool,
     pub stats_collector: Arc<stats::Collector>,
     pub metrics_server_component: MetricsServerComponent,
-    pub otel_uniform_sender: UniformSenderThread<OpenTelemetry>,
-    pub prometheus_uniform_sender: UniformSenderThread<BoxedPrometheusExtra>,
-    pub telegraf_uniform_sender: UniformSenderThread<TelegrafMetric>,
-    pub profile_uniform_sender: UniformSenderThread<Profile>,
+    pub otel_uniform_sender: SendHandler<OpenTelemetry>,
+    pub prometheus_uniform_sender: SendHandler<BoxedPrometheusExtra>,
+    pub telegraf_uniform_sender: SendHandler<TelegrafMetric>,
+    pub profile_uniform_sender: SendHandler<Profile>,
     pub packet_sequence_uniform_output: DebugSender<BoxedPacketSequenceBlock>, // Enterprise Edition Feature: packet-sequence
-    pub packet_sequence_uniform_sender: UniformSenderThread<BoxedPacketSequenceBlock>, // Enterprise Edition Feature: packet-sequence
+    pub packet_sequence_uniform_sender: SendHandler<BoxedPacketSequenceBlock>, // Enterprise Edition Feature: packet-sequence
     #[cfg(feature = "libtrace")]
-    pub proc_event_uniform_sender: UniformSenderThread<crate::common::proc_event::BoxedProcEvents>,
-    pub application_log_uniform_sender: UniformSenderThread<ApplicationLog>,
+    pub proc_event_uniform_sender: SendHandler<crate::common::proc_event::BoxedProcEvents>,
+    pub application_log_uniform_sender: SendHandler<ApplicationLog>,
     #[cfg(feature = "enterprise-integration")]
-    pub skywalking_uniform_sender: UniformSenderThread<SkyWalkingExtra>,
-    pub datadog_uniform_sender: UniformSenderThread<Datadog>,
+    pub skywalking_uniform_sender: SendHandler<SkyWalkingExtra>,
+    pub datadog_uniform_sender: SendHandler<Datadog>,
     pub exception_handler: ExceptionHandler,
     pub proto_log_sender: DebugSender<BoxAppProtoLogsData>,
     pub pcap_batch_sender: DebugSender<BoxedPcapBatch>,
@@ -1819,8 +1821,8 @@ pub struct AgentComponents {
     pub l4_flow_aggr_sender: DebugSender<BoxedTaggedFlow>,
     pub metrics_sender: DebugSender<BoxedDocument>,
     pub npb_bps_limit: Arc<LeakyBucket>,
-    pub compressed_otel_uniform_sender: UniformSenderThread<OpenTelemetryCompressed>,
-    pub pcap_batch_uniform_sender: UniformSenderThread<BoxedPcapBatch>,
+    pub compressed_otel_uniform_sender: SendHandler<OpenTelemetryCompressed>,
+    pub pcap_batch_uniform_sender: SendHandler<BoxedPcapBatch>,
     pub policy_setter: PolicySetter,
     pub policy_getter: PolicyGetter,
     pub npb_bandwidth_watcher: Box<Arc<NpbBandwidthWatcher>>,
@@ -2413,6 +2415,19 @@ impl AgentComponents {
         // TODO: collector enabled
         let mut dispatcher_components = vec![];
 
+        // Determine sender channel: Lumberjack or TCP/Protobuf
+        let use_lumberjack = candidate_config.sender.is_lumberjack_enabled();
+        if use_lumberjack {
+            candidate_config
+                .sender
+                .validate_lumberjack()
+                .map_err(|e| anyhow::anyhow!("Lumberjack config invalid: {e}"))?;
+            info!(
+                "Using Lumberjack sender with {} endpoints",
+                candidate_config.sender.lumberjack_endpoints.len()
+            );
+        }
+
         // Sender/Collector
         info!(
             "static analyzer ip: '{}' actual analyzer ip '{}'",
@@ -2435,20 +2450,29 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let l4_flow_uniform_sender = UniformSenderThread::new(
-            l4_flow_aggr_queue_name,
-            Arc::new(l4_flow_aggr_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            if candidate_config.metric_server.l4_flow_log_compressed {
-                SenderEncoder::Zstd
-            } else {
-                SenderEncoder::Raw
-            },
-            sender_leaky_bucket.clone(),
-        );
+        let l4_flow_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                l4_flow_aggr_queue_name,
+                Arc::new(l4_flow_aggr_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                l4_flow_aggr_queue_name,
+                Arc::new(l4_flow_aggr_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                if candidate_config.metric_server.l4_flow_log_compressed {
+                    SenderEncoder::Zstd
+                } else {
+                    SenderEncoder::Raw
+                },
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let metrics_queue_name = "3-doc-to-collector-sender";
         let (metrics_sender, metrics_receiver, counter) = queue::bounded_with_debug(
@@ -2463,16 +2487,25 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let metrics_uniform_sender = UniformSenderThread::new(
-            metrics_queue_name,
-            Arc::new(metrics_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            SenderEncoder::Raw,
-            sender_leaky_bucket.clone(),
-        );
+        let metrics_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                metrics_queue_name,
+                Arc::new(metrics_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                metrics_queue_name,
+                Arc::new(metrics_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                SenderEncoder::Raw,
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let proto_log_queue_name = "2-protolog-to-collector-sender";
         let (proto_log_sender, proto_log_receiver, counter) = queue::bounded_with_debug(
@@ -2487,20 +2520,29 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let l7_flow_uniform_sender = UniformSenderThread::new(
-            proto_log_queue_name,
-            Arc::new(proto_log_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            if candidate_config.metric_server.l7_flow_log_compressed {
-                SenderEncoder::Zstd
-            } else {
-                SenderEncoder::Raw
-            },
-            sender_leaky_bucket.clone(),
-        );
+        let l7_flow_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                proto_log_queue_name,
+                Arc::new(proto_log_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                proto_log_queue_name,
+                Arc::new(proto_log_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                if candidate_config.metric_server.l7_flow_log_compressed {
+                    SenderEncoder::Zstd
+                } else {
+                    SenderEncoder::Raw
+                },
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let analyzer_ip = if candidate_config
             .dispatcher
@@ -2556,20 +2598,29 @@ impl AgentComponents {
 
         let pcap_packet_shared_connection = Arc::new(Mutex::new(Connection::new()));
 
-        let pcap_batch_uniform_sender = UniformSenderThread::new(
-            pcap_batch_queue,
-            Arc::new(pcap_batch_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            Some(pcap_packet_shared_connection.clone()),
-            if user_config.outputs.compression.pcap {
-                SenderEncoder::Zstd
-            } else {
-                SenderEncoder::Raw
-            },
-            sender_leaky_bucket.clone(),
-        );
+        let pcap_batch_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                pcap_batch_queue,
+                Arc::new(pcap_batch_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                pcap_batch_queue,
+                Arc::new(pcap_batch_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                Some(pcap_packet_shared_connection.clone()),
+                if user_config.outputs.compression.pcap {
+                    SenderEncoder::Zstd
+                } else {
+                    SenderEncoder::Raw
+                },
+                sender_leaky_bucket.clone(),
+            ))
+        };
         // Enterprise Edition Feature: packet-sequence
         let packet_sequence_queue_name = "2-packet-sequence-block-to-sender";
         let (packet_sequence_uniform_output, packet_sequence_uniform_input, counter) =
@@ -2587,16 +2638,25 @@ impl AgentComponents {
             Countable::Owned(Box::new(counter)),
         );
 
-        let packet_sequence_uniform_sender = UniformSenderThread::new(
-            packet_sequence_queue_name,
-            Arc::new(packet_sequence_uniform_input),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            Some(pcap_packet_shared_connection),
-            SenderEncoder::Raw,
-            sender_leaky_bucket.clone(),
-        );
+        let packet_sequence_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                packet_sequence_queue_name,
+                Arc::new(packet_sequence_uniform_input),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                packet_sequence_queue_name,
+                Arc::new(packet_sequence_uniform_input),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                Some(pcap_packet_shared_connection),
+                SenderEncoder::Raw,
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let bpf_builder = bpf::Builder {
             is_ipv6: ctrl_ip.is_ipv6(),
@@ -2707,16 +2767,25 @@ impl AgentComponents {
                 },
                 Countable::Owned(Box::new(counter)),
             );
-            let proc_event_uniform_sender = UniformSenderThread::new(
-                proc_event_queue_name,
-                Arc::new(proc_event_receiver),
-                config_handler.sender(),
-                stats_collector.clone(),
-                exception_handler.clone(),
-                None,
-                SenderEncoder::Raw,
-                sender_leaky_bucket.clone(),
-            );
+            let proc_event_uniform_sender = if use_lumberjack {
+                SendHandler::Lumberjack(LumberjackSenderThread::new(
+                    proc_event_queue_name,
+                    Arc::new(proc_event_receiver),
+                    config_handler.sender(),
+                    sender_leaky_bucket.clone(),
+                ))
+            } else {
+                SendHandler::Uniform(UniformSenderThread::new(
+                    proc_event_queue_name,
+                    Arc::new(proc_event_receiver),
+                    config_handler.sender(),
+                    stats_collector.clone(),
+                    exception_handler.clone(),
+                    None,
+                    SenderEncoder::Raw,
+                    sender_leaky_bucket.clone(),
+                ))
+            };
             (proc_event_sender, proc_event_uniform_sender)
         };
 
@@ -2733,18 +2802,27 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let profile_uniform_sender = UniformSenderThread::new(
-            profile_queue_name,
-            Arc::new(profile_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            // profiler compress is a special one, it requires compressed and directly write into db
-            // so we compress profile data inside and not compress secondly
-            SenderEncoder::Raw,
-            sender_leaky_bucket.clone(),
-        );
+        let profile_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                profile_queue_name,
+                Arc::new(profile_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                profile_queue_name,
+                Arc::new(profile_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                // profiler compress is a special one, it requires compressed and directly write into db
+                // so we compress profile data inside and not compress secondly
+                SenderEncoder::Raw,
+                sender_leaky_bucket.clone(),
+            ))
+        };
         let application_log_queue_name = "1-application-log-to-sender";
         let (application_log_sender, application_log_receiver, counter) = queue::bounded_with_debug(
             user_config
@@ -2762,20 +2840,29 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let application_log_uniform_sender = UniformSenderThread::new(
-            application_log_queue_name,
-            Arc::new(application_log_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            if candidate_config.metric_server.application_log_compressed {
-                SenderEncoder::Zstd
-            } else {
-                SenderEncoder::Raw
-            },
-            sender_leaky_bucket.clone(),
-        );
+        let application_log_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                application_log_queue_name,
+                Arc::new(application_log_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                application_log_queue_name,
+                Arc::new(application_log_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                if candidate_config.metric_server.application_log_compressed {
+                    SenderEncoder::Zstd
+                } else {
+                    SenderEncoder::Raw
+                },
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         #[cfg(feature = "enterprise-integration")]
         let (skywalking_sender, skywalking_uniform_sender) = {
@@ -2796,20 +2883,29 @@ impl AgentComponents {
                 },
                 Countable::Owned(Box::new(counter)),
             );
-            let skywalking_uniform_sender = UniformSenderThread::new(
-                skywalking_queue_name,
-                Arc::new(skywalking_receiver),
-                config_handler.sender(),
-                stats_collector.clone(),
-                exception_handler.clone(),
-                None,
-                if candidate_config.metric_server.compressed {
-                    SenderEncoder::Zstd
-                } else {
-                    SenderEncoder::Raw
-                },
-                sender_leaky_bucket.clone(),
-            );
+            let skywalking_uniform_sender = if use_lumberjack {
+                SendHandler::Lumberjack(LumberjackSenderThread::new(
+                    skywalking_queue_name,
+                    Arc::new(skywalking_receiver),
+                    config_handler.sender(),
+                    sender_leaky_bucket.clone(),
+                ))
+            } else {
+                SendHandler::Uniform(UniformSenderThread::new(
+                    skywalking_queue_name,
+                    Arc::new(skywalking_receiver),
+                    config_handler.sender(),
+                    stats_collector.clone(),
+                    exception_handler.clone(),
+                    None,
+                    if candidate_config.metric_server.compressed {
+                        SenderEncoder::Zstd
+                    } else {
+                        SenderEncoder::Raw
+                    },
+                    sender_leaky_bucket.clone(),
+                ))
+            };
             (skywalking_sender, skywalking_uniform_sender)
         };
 
@@ -2830,20 +2926,29 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let datadog_uniform_sender = UniformSenderThread::new(
-            datadog_queue_name,
-            Arc::new(datadog_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            if candidate_config.metric_server.compressed {
-                SenderEncoder::Zstd
-            } else {
-                SenderEncoder::Raw
-            },
-            sender_leaky_bucket.clone(),
-        );
+        let datadog_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                datadog_queue_name,
+                Arc::new(datadog_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                datadog_queue_name,
+                Arc::new(datadog_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                if candidate_config.metric_server.compressed {
+                    SenderEncoder::Zstd
+                } else {
+                    SenderEncoder::Raw
+                },
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let ebpf_dispatcher_id = dispatcher_components.len();
         #[cfg(all(unix, feature = "libtrace"))]
@@ -2969,20 +3074,29 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let otel_uniform_sender = UniformSenderThread::new(
-            otel_queue_name,
-            Arc::new(otel_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            if candidate_config.metric_server.compressed {
-                SenderEncoder::Zstd
-            } else {
-                SenderEncoder::Raw
-            },
-            sender_leaky_bucket.clone(),
-        );
+        let otel_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                otel_queue_name,
+                Arc::new(otel_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                otel_queue_name,
+                Arc::new(otel_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                if candidate_config.metric_server.compressed {
+                    SenderEncoder::Zstd
+                } else {
+                    SenderEncoder::Raw
+                },
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let otel_dispatcher_id = ebpf_dispatcher_id + 1;
 
@@ -3033,16 +3147,25 @@ impl AgentComponents {
         );
 
         let prometheus_telegraf_shared_connection = Arc::new(Mutex::new(Connection::new()));
-        let prometheus_uniform_sender = UniformSenderThread::new(
-            prometheus_queue_name,
-            Arc::new(prometheus_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            Some(prometheus_telegraf_shared_connection.clone()),
-            SenderEncoder::Raw,
-            sender_leaky_bucket.clone(),
-        );
+        let prometheus_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                prometheus_queue_name,
+                Arc::new(prometheus_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                prometheus_queue_name,
+                Arc::new(prometheus_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                Some(prometheus_telegraf_shared_connection.clone()),
+                SenderEncoder::Raw,
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let telegraf_queue_name = "1-telegraf-to-sender";
         let (telegraf_sender, telegraf_receiver, counter) = queue::bounded_with_debug(
@@ -3061,16 +3184,25 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let telegraf_uniform_sender = UniformSenderThread::new(
-            telegraf_queue_name,
-            Arc::new(telegraf_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            Some(prometheus_telegraf_shared_connection),
-            SenderEncoder::Raw,
-            sender_leaky_bucket.clone(),
-        );
+        let telegraf_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                telegraf_queue_name,
+                Arc::new(telegraf_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                telegraf_queue_name,
+                Arc::new(telegraf_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                Some(prometheus_telegraf_shared_connection),
+                SenderEncoder::Raw,
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let compressed_otel_queue_name = "1-compressed-otel-to-sender";
         let (compressed_otel_sender, compressed_otel_receiver, counter) = queue::bounded_with_debug(
@@ -3089,16 +3221,25 @@ impl AgentComponents {
             },
             Countable::Owned(Box::new(counter)),
         );
-        let compressed_otel_uniform_sender = UniformSenderThread::new(
-            compressed_otel_queue_name,
-            Arc::new(compressed_otel_receiver),
-            config_handler.sender(),
-            stats_collector.clone(),
-            exception_handler.clone(),
-            None,
-            SenderEncoder::Raw,
-            sender_leaky_bucket.clone(),
-        );
+        let compressed_otel_uniform_sender = if use_lumberjack {
+            SendHandler::Lumberjack(LumberjackSenderThread::new(
+                compressed_otel_queue_name,
+                Arc::new(compressed_otel_receiver),
+                config_handler.sender(),
+                sender_leaky_bucket.clone(),
+            ))
+        } else {
+            SendHandler::Uniform(UniformSenderThread::new(
+                compressed_otel_queue_name,
+                Arc::new(compressed_otel_receiver),
+                config_handler.sender(),
+                stats_collector.clone(),
+                exception_handler.clone(),
+                None,
+                SenderEncoder::Raw,
+                sender_leaky_bucket.clone(),
+            ))
+        };
 
         let (external_metrics_server, external_metrics_counter) = MetricServer::new(
             runtime.clone(),
