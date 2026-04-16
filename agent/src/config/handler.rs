@@ -2988,10 +2988,10 @@ impl ConfigHandler {
 
     fn set_log_retention_and_path(
         logger_handle: &mut Option<LoggerHandle>,
-        log_retention: &Duration,
+        max_log_file_count: usize,
         log_file: &String,
     ) -> bool {
-        let log_retention = (log_retention.as_secs() / 3600 / 24).max(1);
+        let max_count = max_log_file_count.max(1);
         match logger_handle.as_mut() {
             Some(h) => match h.flw_config() {
                 Err(FlexiLoggerError::NoFileLogger) => {
@@ -3005,7 +3005,7 @@ impl ConfigHandler {
                             Naming::Timestamps,
                             Cleanup::KeepLogAndCompressedFiles(
                                 DEFAULT_LOG_UNCOMPRESSED_FILE_COUNT,
-                                log_retention as usize,
+                                max_count,
                             ),
                         )
                         .create_symlink(log_file)
@@ -4526,6 +4526,13 @@ impl ConfigHandler {
                 "Update global.limits.local_log_retention from {:?} to {:?}.",
                 limits.local_log_retention, new_limits.local_log_retention
             );
+            limits.local_log_retention = new_limits.local_log_retention;
+        }
+        if limits.max_log_file_count != new_limits.max_log_file_count {
+            info!(
+                "Update global.limits.max_log_file_count from {} to {}.",
+                limits.max_log_file_count, new_limits.max_log_file_count
+            );
             update_log_retention_and_path = true;
         }
         if limits.max_local_log_file_size != new_limits.max_local_log_file_size {
@@ -4783,14 +4790,14 @@ impl ConfigHandler {
         }
 
         if update_log_retention_and_path {
-            let new_retention = &new_config.user_config.global.limits.local_log_retention;
+            let new_count = new_config.user_config.global.limits.max_log_file_count;
             let new_log_file = &new_config.user_config.global.self_monitoring.log.log_file;
-            if Self::set_log_retention_and_path(logger_handle, new_retention, new_log_file) {
-                config.global.limits.local_log_retention = *new_retention;
+            if Self::set_log_retention_and_path(logger_handle, new_count, new_log_file) {
+                config.global.limits.max_log_file_count = new_count;
                 config.global.self_monitoring.log.log_file = new_log_file.clone();
             } else {
-                new_config.user_config.global.limits.local_log_retention =
-                    config.global.limits.local_log_retention;
+                new_config.user_config.global.limits.max_log_file_count =
+                    config.global.limits.max_log_file_count;
                 new_config.user_config.global.self_monitoring.log.log_file =
                     config.global.self_monitoring.log.log_file.clone();
             }

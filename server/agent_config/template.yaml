@@ -106,6 +106,27 @@ global:
     local_log_retention: 30d
     # type: int
     # name:
+    #   en: Maximum Log File Count
+    #   ch: 日志文件最大个数
+    # unit: count
+    # range: [1, 10000]
+    # enum_options: []
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Maximum number of rotated (compressed) log files to keep.
+    #     Oldest files are deleted when this limit is exceeded.
+    #     Works together with local_log_retention: files are removed
+    #     when either the count limit or the retention time is reached.
+    #   ch: |-
+    #     保留的轮转（压缩）日志文件最大个数。
+    #     超过此限制时删除最旧的文件。
+    #     与 local_log_retention 配合使用：文件个数或保留时长
+    #     任一条件达到时即删除。
+    max_log_file_count: 100
+    # type: int
+    # name:
     #   en: Maximum Socket Count
     #   ch: Socket 数量上限
     # unit: count
