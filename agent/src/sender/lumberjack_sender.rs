@@ -445,6 +445,9 @@ impl<T: Sendable> LumberjackSender<T> {
             for msg in batch.drain(..) {
                 if let Some(mut json) = msg.to_json_value() {
                     if let Some(obj) = json.as_object_mut() {
+                        if let Some(topic) = cfg.topics.get(&msg.message_type()) {
+                            obj.insert("@topic".into(), serde_json::json!(topic));
+                        }
                         obj.insert("_agent_id".into(), serde_json::json!(agent_id));
                         obj.insert("_team_id".into(), serde_json::json!(team_id));
                         obj.insert("_org_id".into(), serde_json::json!(org_id));

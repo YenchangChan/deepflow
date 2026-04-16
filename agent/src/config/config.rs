@@ -2886,6 +2886,32 @@ pub struct LumberjackTls {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default)]
+pub struct LumberjackTopics {
+    pub flow_log: String,
+    pub l7_flow_log: String,
+    pub flow_metrics: String,
+    pub application_log: String,
+    pub proc_events: String,
+    pub profile: String,
+    pub integration: String,
+}
+
+impl Default for LumberjackTopics {
+    fn default() -> Self {
+        Self {
+            flow_log: "aimeter_deepflow_l4_flow_log".to_string(),
+            l7_flow_log: "aimeter_deepflow_l7_flow_log".to_string(),
+            flow_metrics: "aimeter_deepflow_flow_metrics".to_string(),
+            application_log: "aimeter_deepflow_application_log".to_string(),
+            proc_events: "aimeter_deepflow_event".to_string(),
+            profile: "aimeter_deepflow_profile".to_string(),
+            integration: "aimeter_deepflow_integration".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub struct Lumberjack {
     pub enabled: bool,
     pub endpoints: Vec<String>,
@@ -2895,6 +2921,7 @@ pub struct Lumberjack {
     pub ack_timeout: Duration,
     pub local_port_range: String,
     pub tls: LumberjackTls,
+    pub topics: LumberjackTopics,
 }
 
 impl Default for Lumberjack {
@@ -2907,6 +2934,7 @@ impl Default for Lumberjack {
             ack_timeout: Duration::from_secs(30),
             local_port_range: String::new(),
             tls: LumberjackTls::default(),
+            topics: LumberjackTopics::default(),
         }
     }
 }
@@ -4218,5 +4246,48 @@ outputs: {}
         assert_eq!(config.outputs.labels.application_log.len(), 0);
         assert_eq!(config.outputs.labels.proc_events.len(), 0);
         assert_eq!(config.outputs.labels.profile.len(), 0);
+    }
+
+    #[test]
+    fn parse_topics_config() {
+        let yaml = r#"
+outputs:
+  lumberjack:
+    topics:
+      flow_log: my_flow_log
+      l7_flow_log: my_l7_log
+      flow_metrics: my_metrics
+      application_log: my_app_log
+      proc_events: my_events
+      profile: my_profile
+      integration: my_integration
+"#;
+        let config: UserConfig = serde_yaml::from_str(yaml).expect("Failed to parse topics config");
+        let topics = &config.outputs.lumberjack.topics;
+        assert_eq!(topics.flow_log, "my_flow_log");
+        assert_eq!(topics.l7_flow_log, "my_l7_log");
+        assert_eq!(topics.flow_metrics, "my_metrics");
+        assert_eq!(topics.application_log, "my_app_log");
+        assert_eq!(topics.proc_events, "my_events");
+        assert_eq!(topics.profile, "my_profile");
+        assert_eq!(topics.integration, "my_integration");
+    }
+
+    #[test]
+    fn parse_topics_defaults() {
+        let yaml = r#"
+outputs:
+  lumberjack: {}
+"#;
+        let config: UserConfig =
+            serde_yaml::from_str(yaml).expect("Failed to parse default topics");
+        let topics = &config.outputs.lumberjack.topics;
+        assert_eq!(topics.flow_log, "aimeter_deepflow_l4_flow_log");
+        assert_eq!(topics.l7_flow_log, "aimeter_deepflow_l7_flow_log");
+        assert_eq!(topics.flow_metrics, "aimeter_deepflow_flow_metrics");
+        assert_eq!(topics.application_log, "aimeter_deepflow_application_log");
+        assert_eq!(topics.proc_events, "aimeter_deepflow_event");
+        assert_eq!(topics.profile, "aimeter_deepflow_profile");
+        assert_eq!(topics.integration, "aimeter_deepflow_integration");
     }
 }

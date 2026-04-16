@@ -280,6 +280,8 @@ pub struct SenderConfig {
     pub lumberjack_tls_ca_path: Option<String>,
     // Custom labels per data type (for Lumberjack JSON output)
     pub labels: HashMap<SendMessageType, Vec<(String, String)>>,
+    // Kafka topic routing per data type (for Lumberjack JSON output)
+    pub topics: HashMap<SendMessageType, String>,
 }
 
 impl SenderConfig {
@@ -2264,6 +2266,25 @@ impl TryFrom<(Config, UserConfig)> for ModuleConfig {
                         }
                     }
                     map
+                },
+                topics: {
+                    let t = &conf.outputs.lumberjack.topics;
+                    HashMap::from([
+                        (SendMessageType::TaggedFlow, t.flow_log.clone()),
+                        (SendMessageType::ProtocolLog, t.l7_flow_log.clone()),
+                        (SendMessageType::Metrics, t.flow_metrics.clone()),
+                        (SendMessageType::ApplicationLog, t.application_log.clone()),
+                        (SendMessageType::ProcEvents, t.proc_events.clone()),
+                        (SendMessageType::Profile, t.profile.clone()),
+                        (SendMessageType::OpenTelemetry, t.integration.clone()),
+                        (
+                            SendMessageType::OpenTelemetryCompressed,
+                            t.integration.clone(),
+                        ),
+                        (SendMessageType::Prometheus, t.integration.clone()),
+                        (SendMessageType::Telegraf, t.integration.clone()),
+                        (SendMessageType::Datadog, t.integration.clone()),
+                    ])
                 },
             },
             npb: NpbConfig {

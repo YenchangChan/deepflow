@@ -7651,6 +7651,92 @@ outputs:
       # modification: agent_restart
       # ee_feature: false
       ca_file: ""
+    # type: section
+    # name:
+    #   en: Topics
+    #   ch: Topic 路由
+    # description:
+    #   en: |-
+    #     Kafka topic routing for Lumberjack output. Each data category
+    #     maps to a configurable topic name injected as "@topic" in JSON.
+    #   ch: |-
+    #     Lumberjack 输出的 Kafka topic 路由配置。每种数据类型映射到一个
+    #     可配置的 topic 名称，以 "@topic" 字段注入到 JSON 中。
+    topics:
+      # type: string
+      # name:
+      #   en: Flow Log Topic
+      #   ch: 流日志 Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: "Kafka topic for L4 flow log (TaggedFlow) messages."
+      #   ch: "L4 流日志（TaggedFlow）消息的 Kafka topic。"
+      flow_log: aimeter_deepflow_l4_flow_log
+      # type: string
+      # name:
+      #   en: L7 Flow Log Topic
+      #   ch: 应用协议日志 Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: "Kafka topic for L7 protocol log (AppProtoLogsData) messages."
+      #   ch: "L7 协议日志（AppProtoLogsData）消息的 Kafka topic。"
+      l7_flow_log: aimeter_deepflow_l7_flow_log
+      # type: string
+      # name:
+      #   en: Flow Metrics Topic
+      #   ch: 流指标 Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: "Kafka topic for flow metrics (Document) messages."
+      #   ch: "流指标（Document）消息的 Kafka topic。"
+      flow_metrics: aimeter_deepflow_flow_metrics
+      # type: string
+      # name:
+      #   en: Application Log Topic
+      #   ch: 应用日志 Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: "Kafka topic for application log messages."
+      #   ch: "应用日志消息的 Kafka topic。"
+      application_log: aimeter_deepflow_application_log
+      # type: string
+      # name:
+      #   en: Process Events Topic
+      #   ch: 进程事件 Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: "Kafka topic for process event messages."
+      #   ch: "进程事件消息的 Kafka topic。"
+      proc_events: aimeter_deepflow_event
+      # type: string
+      # name:
+      #   en: Profile Topic
+      #   ch: Profile Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: "Kafka topic for profile/profiling messages."
+      #   ch: "Profile/Profiling 消息的 Kafka topic。"
+      profile: aimeter_deepflow_profile
+      # type: string
+      # name:
+      #   en: Integration Topic
+      #   ch: 集成数据 Topic
+      # modification: hot_update
+      # ee_feature: false
+      # description:
+      #   en: |-
+      #     Kafka topic for external integration data sources
+      #     (OpenTelemetry, Prometheus, Telegraf, Datadog).
+      #   ch: |-
+      #     外部集成数据源（OpenTelemetry、Prometheus、Telegraf、Datadog）
+      #     的 Kafka topic。
+      integration: aimeter_deepflow_integration
   # type: section
   # name:
   #   en: Flow Log and Request Log
