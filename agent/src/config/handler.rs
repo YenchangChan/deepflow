@@ -2268,7 +2268,9 @@ impl TryFrom<(Config, UserConfig)> for ModuleConfig {
                     map
                 },
                 topics: {
-                    let t = &conf.outputs.lumberjack.topics;
+                    let mut topics = conf.outputs.lumberjack.topics.clone();
+                    topics.fill_empty_with_defaults();
+                    let t = &topics;
                     HashMap::from([
                         (SendMessageType::TaggedFlow, t.flow_log.clone()),
                         (SendMessageType::ProtocolLog, t.l7_flow_log.clone()),

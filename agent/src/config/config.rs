@@ -2910,6 +2910,27 @@ impl Default for LumberjackTopics {
     }
 }
 
+impl LumberjackTopics {
+    /// Replace empty topic values with their defaults.
+    pub fn fill_empty_with_defaults(&mut self) {
+        let defaults = Self::default();
+        let pairs: [(&mut String, &str); 7] = [
+            (&mut self.flow_log, &defaults.flow_log),
+            (&mut self.l7_flow_log, &defaults.l7_flow_log),
+            (&mut self.flow_metrics, &defaults.flow_metrics),
+            (&mut self.application_log, &defaults.application_log),
+            (&mut self.proc_events, &defaults.proc_events),
+            (&mut self.profile, &defaults.profile),
+            (&mut self.integration, &defaults.integration),
+        ];
+        for (val, default) in pairs {
+            if val.is_empty() {
+                *val = default.to_string();
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Lumberjack {
@@ -4289,5 +4310,34 @@ outputs:
         assert_eq!(topics.proc_events, "aimeter_deepflow_event");
         assert_eq!(topics.profile, "aimeter_deepflow_profile");
         assert_eq!(topics.integration, "aimeter_deepflow_integration");
+    }
+
+    #[test]
+    fn topics_empty_fallback_to_defaults() {
+        let yaml = r#"
+outputs:
+  lumberjack:
+    topics:
+      flow_log: ""
+      l7_flow_log: custom_l7
+      flow_metrics: ""
+      application_log: ""
+      proc_events: ""
+      profile: ""
+      integration: ""
+"#;
+        let config: UserConfig =
+            serde_yaml::from_str(yaml).expect("Failed to parse topics with empty values");
+        let mut topics = config.outputs.lumberjack.topics;
+        topics.fill_empty_with_defaults();
+        // Empty values should fall back to defaults
+        assert_eq!(topics.flow_log, "aimeter_deepflow_l4_flow_log");
+        assert_eq!(topics.flow_metrics, "aimeter_deepflow_flow_metrics");
+        assert_eq!(topics.application_log, "aimeter_deepflow_application_log");
+        assert_eq!(topics.proc_events, "aimeter_deepflow_event");
+        assert_eq!(topics.profile, "aimeter_deepflow_profile");
+        assert_eq!(topics.integration, "aimeter_deepflow_integration");
+        // Non-empty value should be preserved
+        assert_eq!(topics.l7_flow_log, "custom_l7");
     }
 }
