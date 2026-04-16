@@ -2436,8 +2436,8 @@ impl Default for Limits {
             max_millicpus: 1000,
             max_memory: 768 << 20,
             max_log_backhaul_rate: 36000,
-            max_local_log_file_size: 1000 << 20,
-            local_log_retention: Duration::from_secs(300 * 24 * 3600),
+            max_local_log_file_size: 100 << 20,
+            local_log_retention: Duration::from_secs(30 * 24 * 3600),
             max_sockets: 1024,
             max_sockets_tolerate_interval: Duration::from_secs(60),
         }
@@ -2699,7 +2699,7 @@ impl Default for Log {
         Self {
             log_level: "INFO".to_string(),
             log_file: "/var/log/deepflow-agent/deepflow-agent.log".to_string(),
-            log_backhaul_enabled: true,
+            log_backhaul_enabled: false,
         }
     }
 }

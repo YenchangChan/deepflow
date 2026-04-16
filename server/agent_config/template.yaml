@@ -87,7 +87,7 @@ global:
     #   ch: |-
     #     用于 deepflow-agent 控制自身运行日志在本地的存储量。
     # upgrade_from: log_file_size
-    max_local_log_file_size: 1000
+    max_local_log_file_size: 100
     # type: duration
     # name:
     #   en: Local Log Retention
@@ -103,7 +103,7 @@ global:
     #   ch: |-
     #     用于 deepflow-agent 控制自身运行日志在本地的留存时长。
     # upgrade_from: log_retention
-    local_log_retention: 300d
+    local_log_retention: 30d
     # type: int
     # name:
     #   en: Maximum Socket Count
@@ -979,7 +979,7 @@ global:
       #   ch: |-
       #     开启后，deepflow-agent 将向 deepflow-server 回传运行日志。
       # upgrade_from: rsyslog_enabled
-      log_backhaul_enabled: true
+      log_backhaul_enabled: false
     # type: section
     # name:
     #   en: Profile
