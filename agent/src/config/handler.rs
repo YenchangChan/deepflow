@@ -271,6 +271,7 @@ pub struct SenderConfig {
     pub enabled: bool,
     // Lumberjack output (flattened from outputs.lumberjack)
     pub lumberjack_enabled: bool,
+    pub lumberjack_id: String,
     pub lumberjack_endpoints: Vec<(String, u16)>,
     pub lumberjack_compression_level: u32,
     pub lumberjack_batch_size: usize,
@@ -2223,6 +2224,7 @@ impl TryFrom<(Config, UserConfig)> for ModuleConfig {
                 standalone_data_file_dir: conf.global.standalone_mode.data_file_dir.clone(),
                 enabled: conf.outputs.flow_metrics.enabled,
                 lumberjack_enabled: conf.outputs.lumberjack.enabled,
+                lumberjack_id: conf.outputs.lumberjack.id.clone(),
                 lumberjack_endpoints: conf
                     .outputs
                     .lumberjack

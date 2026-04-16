@@ -17,7 +17,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use arc_swap::access::Access;
 use log::{info, warn};
@@ -406,14 +406,46 @@ impl<T: Sendable> LumberjackSender<T> {
         ));
     }
 
+    fn log_metrics(&self, id: &str) {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let rx = self.counter.rx.swap(0, Ordering::Relaxed);
+        let tx = self.counter.tx.swap(0, Ordering::Relaxed);
+        let tx_bytes = self.counter.tx_bytes.swap(0, Ordering::Relaxed);
+        let dropped = self.counter.dropped.swap(0, Ordering::Relaxed);
+        let write_failures = self.pool_stats.write_failures.swap(0, Ordering::Relaxed);
+        let retry_successes = self.pool_stats.retry_successes.swap(0, Ordering::Relaxed);
+        info!(
+            "[metrics_logging] \
+             out_{id}.timestamp={now_ms},\
+             out_{id}.send_bytes={tx_bytes},\
+             out_{id}.send_lines={tx},\
+             out_{id}.ack_lines={tx},\
+             out_{id}.rx_lines={rx},\
+             out_{id}.dropped_lines={dropped},\
+             out_{id}.write_failures={write_failures},\
+             out_{id}.retry_successes={retry_successes}"
+        );
+    }
+
     async fn run(&mut self) {
         let mut batch = Vec::with_capacity(QUEUE_BATCH_SIZE);
+        let mut last_metrics_log = Instant::now();
+        const METRICS_LOG_INTERVAL: Duration = Duration::from_secs(30);
 
         while self.running.load(Ordering::Relaxed) {
             self.ensure_pool();
 
             batch.clear();
             let cfg = self.config.load();
+
+            // Periodic metrics logging
+            if !cfg.lumberjack_id.is_empty() && last_metrics_log.elapsed() >= METRICS_LOG_INTERVAL {
+                self.log_metrics(&cfg.lumberjack_id);
+                last_metrics_log = Instant::now();
+            }
             let batch_size = if cfg.lumberjack_batch_size == 0 {
                 1
             } else {

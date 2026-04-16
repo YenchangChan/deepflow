@@ -2935,6 +2935,7 @@ impl LumberjackTopics {
 #[serde(default)]
 pub struct Lumberjack {
     pub enabled: bool,
+    pub id: String,
     pub endpoints: Vec<String>,
     pub compression_level: u32,
     pub batch_size: usize,
@@ -2949,6 +2950,7 @@ impl Default for Lumberjack {
     fn default() -> Self {
         Self {
             enabled: false,
+            id: String::new(),
             endpoints: vec![],
             compression_level: 3,
             batch_size: 100,

@@ -7564,6 +7564,22 @@ outputs:
     #   ch: |-
     #     启用 Lumberjack 输出通道（同时禁用默认的 TCP/Protobuf 通道）。
     enabled: false
+    # type: string
+    # name:
+    #   en: Lumberjack ID
+    #   ch: Lumberjack 实例 ID
+    # modification: hot_update
+    # ee_feature: false
+    # description:
+    #   en: |-
+    #     Identifier for this Lumberjack output instance. Used as a prefix
+    #     in periodic metrics logging, e.g. "out_<id>.send_bytes=...".
+    #     Example: "aimeter-apm-deepflow-678765765768756".
+    #   ch: |-
+    #     此 Lumberjack 输出实例的标识符。用于周期性指标日志的前缀，
+    #     例如 "out_<id>.send_bytes=..."。
+    #     示例："aimeter-apm-deepflow-678765765768756"。
+    id: ""
     # type: list
     # name:
     #   en: Lumberjack Endpoints
